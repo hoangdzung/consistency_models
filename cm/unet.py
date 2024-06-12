@@ -18,6 +18,7 @@ from .nn import (
     timestep_embedding,
 )
 
+from .fsq import FSQ
 
 class AttentionPool2d(nn.Module):
     """
@@ -684,7 +685,9 @@ class UNetModel(nn.Module):
             ),
         )
         self._feature_size += ch
-
+        # # TODO: remove hard-code
+        # self.L_fsq = 5
+        # self.fsq = FSQ([self.L_fsq] * time_embed_dim)
         self.output_blocks = nn.ModuleList([])
         for level, mult in list(enumerate(channel_mult))[::-1]:
             for i in range(num_res_blocks + 1):
@@ -778,6 +781,7 @@ class UNetModel(nn.Module):
             h = module(h, emb)
             hs.append(h)
         h = self.middle_block(h, emb)
+        # h = self.fsq(h.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
         for module in self.output_blocks:
             h = th.cat([h, hs.pop()], dim=1)
             h = module(h, emb)

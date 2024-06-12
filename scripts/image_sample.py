@@ -9,6 +9,9 @@ import os
 import numpy as np
 import torch as th
 import torch.distributed as dist
+# import pillow
+import PIL.Image
+
 
 from cm import dist_util, logger
 from cm.script_util import (
@@ -26,7 +29,7 @@ def main():
     args = create_argparser().parse_args()
 
     dist_util.setup_dist()
-    logger.configure()
+    logger.configure(dir=args.save_dir)
 
     if "consistency" in args.training_mode:
         distillation = True
@@ -132,6 +135,7 @@ def create_argparser():
         model_path="",
         seed=42,
         ts="",
+        save_dir="",
     )
     defaults.update(model_and_diffusion_defaults())
     parser = argparse.ArgumentParser()
