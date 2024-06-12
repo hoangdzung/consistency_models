@@ -59,15 +59,29 @@ def main():
     all_images = []
     all_labels = []
     generator = get_generator(args.generator, args.num_samples, args.seed)
-
+    if args.load_from_file and os.path.isfile(args.load_from_file):
+        data = np.load(args.load_from_file)
+        all_x_T = data['x_T']
+        all_classes = data['classes']
+        batch_id = 0
+    else:
+        all_x_T, all_classes = None, None
+    
     while len(all_images) * args.batch_size < args.num_samples:
         model_kwargs = {}
         if args.class_cond:
-            classes = th.randint(
-                low=0, high=NUM_CLASSES, size=(args.batch_size,), device=dist_util.dev()
-            )
+            if all_classes is None:
+                classes = th.randint(
+                    low=0, high=NUM_CLASSES, size=(args.batch_size,), device=dist_util.dev()
+                )
+            else:
+                classes = th.tensor(all_classes[batch_id * args.batch_size: (batch_id + 1) * args.batch_size], device=dist_util.dev()).long()
             model_kwargs["y"] = classes
-
+        if all_x_T is not None:
+            x_T = th.tensor(all_x_T[batch_id * args.batch_size: (batch_id + 1) * args.batch_size], device=dist_util.dev())
+        else:
+            x_T = None
+        batch_id += 1
         sample = karras_sample(
             diffusion,
             model,
@@ -85,6 +99,7 @@ def main():
             s_noise=args.s_noise,
             generator=generator,
             ts=ts,
+            x_T=x_T,
         )
         sample = ((sample + 1) * 127.5).clamp(0, 255).to(th.uint8)
         sample = sample.permute(0, 2, 3, 1)
@@ -136,6 +151,7 @@ def create_argparser():
         seed=42,
         ts="",
         save_dir="",
+        load_from_file="",
     )
     defaults.update(model_and_diffusion_defaults())
     parser = argparse.ArgumentParser()
