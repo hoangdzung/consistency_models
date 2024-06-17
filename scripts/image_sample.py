@@ -102,7 +102,7 @@ def main():
             x_T=x_T,
         )
         if args.return_intermediate:
-            sample, intermediates = sample
+            sample, _ = sample
         sample = ((sample + 1) * 127.5).clamp(0, 255).to(th.uint8)
         sample = sample.permute(0, 2, 3, 1)
         sample = sample.contiguous()
