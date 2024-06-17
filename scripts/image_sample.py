@@ -63,9 +63,9 @@ def main():
         data = np.load(args.load_from_file)
         all_x_T = data['x_T']
         all_classes = data['classes']
-        batch_id = 0
     else:
         all_x_T, all_classes = None, None
+    batch_id = 0
     
     while len(all_images) * args.batch_size < args.num_samples:
         model_kwargs = {}
