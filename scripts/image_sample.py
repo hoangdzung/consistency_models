@@ -58,7 +58,7 @@ def main():
     generator = get_generator(args.generator, args.num_samples, args.seed)
 
     while len(all_images) * args.batch_size < args.num_samples:
-        model_kwargs = {}
+        model_kwargs = {"return_intermediate": args.return_intermediate}
         if args.class_cond:
             classes = th.randint(
                 low=0, high=NUM_CLASSES, size=(args.batch_size,), device=dist_util.dev()
@@ -83,6 +83,8 @@ def main():
             generator=generator,
             ts=ts,
         )
+        if args.return_intermediate:
+            sample, intermediates = sample
         sample = ((sample + 1) * 127.5).clamp(0, 255).to(th.uint8)
         sample = sample.permute(0, 2, 3, 1)
         sample = sample.contiguous()
@@ -132,6 +134,7 @@ def create_argparser():
         model_path="",
         seed=42,
         ts="",
+        return_intermediate=False,
     )
     defaults.update(model_and_diffusion_defaults())
     parser = argparse.ArgumentParser()

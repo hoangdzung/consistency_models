@@ -14,6 +14,7 @@ from . import dist_util
 from .nn import mean_flat, append_dims, append_zero
 from .random_util import get_generator
 
+from copy import deepcopy
 
 def get_weightings(weight_schedule, snrs, sigma_data):
     if weight_schedule == "snr":
@@ -345,7 +346,11 @@ class KarrasDenoiser:
             ]
         rescaled_t = 1000 * 0.25 * th.log(sigmas + 1e-44)
         model_output = model(c_in * x_t, rescaled_t, **model_kwargs)
+        if model_kwargs['return_intermediate']:
+            intermediates, model_output = model_output
         denoised = c_out * model_output + c_skip * x_t
+        if model_kwargs['return_intermediate']:
+            return model_output, denoised, intermediates
         return model_output, denoised
 
 
@@ -401,13 +406,21 @@ def karras_sample(
     else:
         sampler_args = {}
 
-    def denoiser(x_t, sigma):
-        _, denoised = diffusion.denoise(model, x_t, sigma, **model_kwargs)
+    def denoiser(x_t, sigma, return_intermediate=False): # we only pass return_intermediate=True in sample_onestep
+        copied_model_kwargs = deepcopy(model_kwargs)
+        copied_model_kwargs['return_intermediate'] = return_intermediate and copied_model_kwargs.get('return_intermediate', False)
+        outputs = diffusion.denoise(model, x_t, sigma, **copied_model_kwargs)
+        if copied_model_kwargs['return_intermediate']:
+            _, denoised, intermediates = outputs 
+        else:
+            _, denoised = outputs 
         if clip_denoised:
             denoised = denoised.clamp(-1, 1)
+        if copied_model_kwargs['return_intermediate']:
+            return denoised, intermediates
         return denoised
 
-    x_0 = sample_fn(
+    outputs = sample_fn(
         denoiser,
         x_T,
         sigmas,
@@ -416,7 +429,13 @@ def karras_sample(
         callback=callback,
         **sampler_args,
     )
-    return x_0.clamp(-1, 1)
+    if type(outputs) == tuple:
+        x_0, intermediates = outputs 
+    else:
+        x_0, intermediates = outputs, None 
+    if intermediates is None:
+        return x_0.clamp(-1, 1)
+    return x_0.clamp(-1, 1), intermediates
 
 
 def get_sigmas_karras(n, sigma_min, sigma_max, rho=7.0, device="cpu"):
@@ -650,7 +669,7 @@ def sample_onestep(
 ):
     """Single-step generation from a distilled model."""
     s_in = x.new_ones([x.shape[0]])
-    return distiller(x, sigmas[0] * s_in)
+    return distiller(x, sigmas[0] * s_in, return_intermediate=True)
 
 
 @th.no_grad()
