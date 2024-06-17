@@ -19,3 +19,10 @@ dist/
 
 # Other
 *.DS_Store
+
+*.pkl
+*.npz
+*.png
+*.txt
+*.pt.1
+*.pt
