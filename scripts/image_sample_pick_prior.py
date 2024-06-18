@@ -120,7 +120,7 @@ def main():
     lpips_model = lpips.LPIPS(net='vgg').to(dist_util.dev())
     with tqdm(total=args.num_samples) as pbar:
         while n_stable_samples < args.num_samples:
-            model_kwargs = {}
+            model_kwargs = {"return_intermediate": args.return_intermediate}
             if args.class_cond:
                 classes = th.randint(
                     low=0, high=NUM_CLASSES, size=(n_actual_point_per_batch,), device=dist_util.dev()
@@ -154,6 +154,9 @@ def main():
                 ts=ts,
                 x_T=all_x_T
             )
+            if args.return_intermediate:
+                all_sample, all_intermediates = all_sample
+
             all_sample = ((all_sample + 1) * 127.5).clamp(0, 255).to(th.uint8)
             all_sample = all_sample.contiguous()
 
@@ -173,17 +176,31 @@ def main():
             repeated_anchors = anchor_images.unsqueeze(1).expand(-1, args.num_neighbors, 3, args.image_size, args.image_size) # Shape: (n_actual_points, num_neighbors, 3, 64, 64)
             # Compute LPIPS loss for each pair
             
-            distances = compute_lpips_loss(lpips_model, 
+            lpips_distances = compute_lpips_loss(lpips_model, 
                                            repeated_anchors.reshape(-1, 3, args.image_size, args.image_size), 
                                            neighbor_images.reshape(-1, 3, args.image_size, args.image_size)) 
             
-            distances_reshaped = distances.view(grouped_batch[:, 1:].shape[0], -1)
-            max_distances, max_distance_indices = th.max(distances_reshaped, dim=1)
-            max_distance_neighbors = neigh_x_T[th.arange(neigh_x_T.shape[0]), max_distance_indices]
-            max_distance_neighbor_images = neighbor_images[th.arange(neighbor_images.shape[0]), max_distance_indices]
+            lpips_distances_reshaped = lpips_distances.view(grouped_batch[:, 1:].shape[0], -1)
+            max_lpips_distances, max_lpips_distance_indices = th.max(lpips_distances_reshaped, dim=1)
+            max_distance_neighbors = neigh_x_T[th.arange(neigh_x_T.shape[0]), max_lpips_distance_indices]
+            max_distance_neighbor_images = neighbor_images[th.arange(neighbor_images.shape[0]), max_lpips_distance_indices]
+
+            l2_distances = th.sqrt(th.sum((repeated_anchors-neighbor_images)**2,dim=[2,3,4]))
+            max_l2_distances = l2_distances[th.arange(l2_distances.shape[0]), max_lpips_distance_indices]
+
+            if args.return_intermediate:
+                intermediates_distances = {}
+                for layer_idx, intermediates in enumerate(all_intermediates):
+                    intermediate_shape = intermediates.shape
+                    grouped_batch = intermediates.view(n_actual_point_per_batch, (args.num_neighbors + 1) , *intermediate_shape[-3:])
+                    anchor_intermediates = grouped_batch[:, 0]
+                    neighbor_intermediates = grouped_batch[:, 1:]
+                    repeated_anchor_intermediates = anchor_intermediates.unsqueeze(1).expand(-1, args.num_neighbors, *intermediate_shape[-3:]) # Shape: (n_actual_points, num_neighbors, 3, 64, 64)
+                    l2_distance = th.sqrt(th.sum((neighbor_intermediates - repeated_anchor_intermediates)**2, dim=[2, 3, 4]))
+                    intermediates_distances[layer_idx] = l2_distance[th.arange(l2_distance.shape[0]), max_lpips_distance_indices]
 
             for i in range(n_actual_point_per_batch):
-                max_distance = max_distances[i].item()
+                max_distance = max_lpips_distances[i].item()
                 if max_distance <= args.threshold:
                     n_stable_samples += 1
                     pbar.update(1)
@@ -196,8 +213,11 @@ def main():
                     "neigh_x_T": max_distance_neighbors[i].cpu().numpy(),
                     "sample": anchor_images[i].cpu().numpy(),
                     "neigh_sample": max_distance_neighbor_images[i].cpu().numpy(),
-                    "lpips": max_distances[i].cpu().numpy()
+                    "lpips": max_lpips_distances[i].cpu().numpy(),
+                    "l2": max_l2_distances[i].cpu().numpy(),
                 }
+                if args.return_intermediate:
+                    data["intermediate_distances"] = np.array([intermediates_distances[layer_idx][i].cpu().numpy() for layer_idx in range(len(all_intermediates))])
 
                 np.savez(os.path.join(args.save_dir, f'data_{n_total_samples:05d}.npz'), **data)
                 n_total_samples += 1 
@@ -236,6 +256,7 @@ def create_argparser():
         seed=42,
         ts="",
         save_dir="",
+        return_intermediate=True,
         num_neighbors=1,
         angle=1.0,
         threshold=0.01,
