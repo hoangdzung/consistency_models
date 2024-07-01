@@ -6,6 +6,7 @@ import numpy as np
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.autograd.functional import jacobian
 
 from .fp16_util import convert_module_to_f16, convert_module_to_f32
 from .nn import (
@@ -756,7 +757,7 @@ class UNetModel(nn.Module):
         self.middle_block.apply(convert_module_to_f32)
         self.output_blocks.apply(convert_module_to_f32)
 
-    def forward(self, x, timesteps, y=None, return_intermediate=False):
+    def forward(self, x, timesteps, y=None, return_intermediate=False, return_jabcobian=-1):
         """
         Apply the model to an input batch.
 
@@ -777,8 +778,7 @@ class UNetModel(nn.Module):
             emb = emb + self.label_emb(y)
 
         h = x.type(self.dtype)
-        if return_intermediate:
-            intermediates = []
+        intermediates = []
         for module in self.input_blocks:
             h = module(h, emb)
             hs.append(h)
@@ -787,12 +787,17 @@ class UNetModel(nn.Module):
         h = self.middle_block(h, emb)
         if return_intermediate:
             intermediates.append(h)
-        for module in self.output_blocks:
+        jacobian_matrix = None
+        for i, module in enumerate(self.output_blocks):
             h = th.cat([h, hs.pop()], dim=1)
+            if return_jabcobian == i:
+                jacobian_matrix = jacobian(module, h, emb)
             h = module(h, emb)
             if return_intermediate:
                 intermediates.append(h)
         h = h.type(x.dtype)
-        if return_intermediate:
+        if jacobian_matrix is not None:
+            intermediates.append(jacobian_matrix)
+        if len(return_intermediate) > 0:
             return self.out(h), intermediates
         return self.out(h)
