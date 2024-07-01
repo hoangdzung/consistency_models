@@ -26,3 +26,12 @@ dist/
 *.txt
 *.pt.1
 *.pt
+*priors*
+*csv
+*ipynb
+*out
+resampling_images
+*stable_*
+temp
+imn_64_10000
+baseline_images
