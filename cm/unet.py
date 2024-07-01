@@ -757,7 +757,7 @@ class UNetModel(nn.Module):
         self.middle_block.apply(convert_module_to_f32)
         self.output_blocks.apply(convert_module_to_f32)
 
-    def forward(self, x, timesteps, y=None, return_intermediate=False, return_jabcobian=-1):
+    def forward(self, x, timesteps, y=None, return_intermediate=False, return_jacobian=-1):
         """
         Apply the model to an input batch.
 
@@ -790,8 +790,8 @@ class UNetModel(nn.Module):
         jacobian_matrix = None
         for i, module in enumerate(self.output_blocks):
             h = th.cat([h, hs.pop()], dim=1)
-            if return_jabcobian == i:
-                jacobian_matrix = jacobian(module, h, emb)
+            if return_jacobian == i:
+                jacobian_matrix = jacobian(lambda x: module(x, emb), h)
             h = module(h, emb)
             if return_intermediate:
                 intermediates.append(h)

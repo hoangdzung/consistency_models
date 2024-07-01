@@ -407,17 +407,18 @@ def karras_sample(
     else:
         sampler_args = {}
 
-    def denoiser(x_t, sigma, return_intermediate=False): # we only pass return_intermediate=True in sample_onestep
+    def denoiser(x_t, sigma, return_intermediate=False, return_jacobian=-1): # we only pass return_intermediate=True in sample_onestep
         copied_model_kwargs = deepcopy(model_kwargs)
         copied_model_kwargs['return_intermediate'] = return_intermediate and copied_model_kwargs.get('return_intermediate', False)
+        copied_model_kwargs['return_jacobian'] = -1 if return_jacobian == -1 else copied_model_kwargs.get('return_jacobian')
         outputs = diffusion.denoise(model, x_t, sigma, **copied_model_kwargs)
-        if copied_model_kwargs['return_intermediate']:
+        if copied_model_kwargs['return_intermediate'] or copied_model_kwargs['return_jacobian'] >= 0:
             _, denoised, intermediates = outputs 
         else:
             _, denoised = outputs 
         if clip_denoised:
             denoised = denoised.clamp(-1, 1)
-        if copied_model_kwargs['return_intermediate']:
+        if copied_model_kwargs['return_intermediate'] or copied_model_kwargs['return_jacobian'] >= 0:
             return denoised, intermediates
         return denoised
 
@@ -670,7 +671,7 @@ def sample_onestep(
 ):
     """Single-step generation from a distilled model."""
     s_in = x.new_ones([x.shape[0]])
-    return distiller(x, sigmas[0] * s_in, return_intermediate=True)
+    return distiller(x, sigmas[0] * s_in, return_intermediate=True, return_jacobian=0) # we only turn this one on for special outputs
 
 
 @th.no_grad()
