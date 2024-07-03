@@ -90,3 +90,5 @@ mpiexec -n 8 python image_sample.py --batch_size 32 --training_mode consistency_
 
 ## Two-step sampling for CT on LSUN Cat-256
 mpiexec -n 8 python image_sample.py --batch_size 32 --training_mode consistency_distillation --sampler multistep --ts 0,62,150 --steps 151 --model_path /path/to/ct_cat256.pt --attention_resolutions 32,16,8 --class_cond False --use_scale_shift_norm False --dropout 0.0 --image_size 256 --num_channels 256 --num_head_channels 64 --num_res_blocks 2 --num_samples 500 --resblock_updown True --use_fp16 True --weight_schedule uniform
+
+python image_sample_pick_prior_jacobian.py --batch_size 4 --training_mode consistency_distillation --sampler onestep --ts 0,22,39 --steps 40 --model_path ../cd_imagenet64_lpips.pt --attention_resolutions 32,16,8 --class_cond True --use_scale_shift_norm True --dropout 0.0 --image_size 64 --num_channels 192 --num_head_channels 64 --num_res_blocks 3 --num_samples 500 --resblock_updown True --use_fp16 True --weight_schedule uniform --save_dir tmp --return_jacobian 2 

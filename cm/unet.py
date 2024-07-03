@@ -21,6 +21,41 @@ from .nn import (
 
 from .fsq import FSQ
 
+def _jacobian_vector_product(y, x, v, create_graph=False):
+    '''
+    Produce jacobian-vector product dy/dx dot v.
+
+    Note that if you want to differentiate it,
+    you need to make create_graph=True
+    '''
+    flat_y = y.reshape(-1)
+    flat_v = v.reshape(-1)
+    grad_x, = th.autograd.grad(flat_y, x, flat_v,
+                                  retain_graph=True,
+                                  create_graph=create_graph)
+    return grad_x
+
+def jacobian_norm_random_projection(model, input_tensor, num_projections=10):
+    input_tensor = input_tensor.clone().detach().requires_grad_(True)  # Ensure the input is a leaf tensor with requires_grad=True
+
+    norms = []
+
+    for _ in range(num_projections):
+        output_tensor = model(input_tensor)
+        output_flat = output_tensor.view(-1)
+
+        v = th.randn_like(output_flat).to(input_tensor.device)
+        jv = _jacobian_vector_product(output_flat, input_tensor, v, create_graph=True)
+
+        norm_jv = th.norm(jv, dim=list(range(1, jv.dim())))
+        norms.append(norm_jv)
+        input_tensor.grad = None
+
+    # Average the norms from all projections as an estimate of the Jacobian norm
+    jacobian_norm_estimate = th.stack(norms).mean(0)
+
+    return jacobian_norm_estimate
+
 class AttentionPool2d(nn.Module):
     """
     Adapted from CLIP: https://github.com/openai/CLIP/blob/main/clip/model.py
@@ -791,13 +826,13 @@ class UNetModel(nn.Module):
         for i, module in enumerate(self.output_blocks):
             h = th.cat([h, hs.pop()], dim=1)
             if return_jacobian == i:
-                jacobian_matrix = jacobian(lambda x: module(x, emb), h)
+                jacobian_norms = jacobian_norm_random_projection(lambda x: module(x, emb), h, num_projections=10)
             h = module(h, emb)
             if return_intermediate:
                 intermediates.append(h)
         h = h.type(x.dtype)
         if jacobian_matrix is not None:
-            intermediates.append(jacobian_matrix)
+            intermediates.append(jacobian_norms)
         if len(return_intermediate) > 0:
             return self.out(h), intermediates
         return self.out(h)
